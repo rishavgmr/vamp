@@ -150,6 +150,22 @@ if(VAMP_BUILD_CPP_DEMO)
   endif()
 endif()
 
+# fanuc_m710 benchmark against our own Collins scene (RSW-2740 pRRTC/VAMP comparison) - not part
+# of upstream vamp, ours only, so unlike the demos above this is unconditional (mirrors pRRTC's
+# own CMakeLists.txt, which always builds its benchmark_fanuc_m710 target the same way).
+CPMAddPackage("gh:nlohmann/json@3.11.3")
+add_executable(benchmark_fanuc_m710 scripts/cpp/benchmark_fanuc_m710.cc)
+target_link_libraries(benchmark_fanuc_m710 PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  target_compile_options(benchmark_fanuc_m710 PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+endif()
+
+add_executable(benchmark_fanuc_m710_sdf scripts/cpp/benchmark_fanuc_m710_sdf.cc)
+target_link_libraries(benchmark_fanuc_m710_sdf PRIVATE vamp_cpp nlohmann_json::nlohmann_json)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  target_compile_options(benchmark_fanuc_m710_sdf PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+endif()
+
 # OMPL integration demo
 if(VAMP_BUILD_OMPL_DEMO)
   find_package(ompl QUIET PATHS ${VAMP_OMPL_PATH})

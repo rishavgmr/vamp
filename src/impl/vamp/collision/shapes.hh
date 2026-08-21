@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 #include <memory>
 
@@ -290,7 +291,7 @@ namespace vamp::collision
           , yd2(yd / 2)
           , data(data)
         {
-            Shape<DataT>::min_distance = 0;
+            Shape<DataT>::min_distance = 0.0F;
         }
 
         template <typename OtherDataT>
@@ -307,6 +308,131 @@ namespace vamp::collision
           , xd2(other.xd2)
           , yd2(other.yd2)
           , data(other.data)
+        {
+        }
+    };
+
+    // RSW-2740: a dense signed-distance-field grid, for collision checking against voxelized
+    // environment meshes (e.g. workpieces) without a triangle-mesh representation. Ported from
+    // pRRTC's own ppln::collision::SDFGrid (src/collision/sdf_environment.hh in the pRRTC fork) -
+    // same fields, same x100-scaled distance-value convention (grid values and offset_scaled are
+    // in that scaled unit; bounds/spacing stay in plain meters), same world-to-local rigid
+    // transform convention. `data` is always stored as float here (unlike pRRTC's int16-or-float
+    // dual dtype) - converted once at load time, since there's no SIMD benefit to keeping the
+    // narrower storage on the CPU/SIMD side the way there is saving GPU memory bandwidth.
+    template <typename DataT>
+    struct SDFGrid : public Shape<DataT>
+    {
+        DataT bounds_lower_x, bounds_lower_y, bounds_lower_z;
+        DataT bounds_upper_x, bounds_upper_y, bounds_upper_z;
+        DataT spacing;
+        std::size_t num_x, num_y, num_z;
+        DataT offset_scaled;
+
+        // World-to-local rigid transform - identity (row0=(1,0,0), row1=(0,1,0), row2=(0,0,1),
+        // inv_translation=(0,0,0)) for a grid placed at the world origin with no rotation, a
+        // pure no-op in that case. See pRRTC's own SDFGrid comment for the full reasoning.
+        DataT inv_rotation_row0_x, inv_rotation_row0_y, inv_rotation_row0_z;
+        DataT inv_rotation_row1_x, inv_rotation_row1_y, inv_rotation_row1_z;
+        DataT inv_rotation_row2_x, inv_rotation_row2_y, inv_rotation_row2_z;
+        DataT inv_translation_x, inv_translation_y, inv_translation_z;
+
+        std::vector<float> data;  // flattened, X fastest / Z slowest (matches pRRTC's sdf_flat_idx)
+
+        // RSW-2740: bit `i` set means cricket's per-link environment check for link_index `i`
+        // (see ccfk_template.hh's per-link block) skips this grid entirely, mirroring pRRTC's
+        // own fanucm710_link_env_mask (uploadSDFEnvironment's link_env_mask param) - both driven
+        // by the same scene_config_m710.json collisionMask entries. Not part of either
+        // constructor below (set via plain member assignment after construction, same as
+        // `.name` already is in the benchmark's load_environment()) since it's populated from a
+        // separate data source (collisionMask) than the grid's own geometry. Default 0 = this
+        // grid is checked against every link, matching prior (unmasked) behavior.
+        std::uint32_t masked_link_bitmask = 0;
+
+        SDFGrid() = default;
+
+        explicit SDFGrid(
+            DataT bounds_lower_x,
+            DataT bounds_lower_y,
+            DataT bounds_lower_z,
+            DataT bounds_upper_x,
+            DataT bounds_upper_y,
+            DataT bounds_upper_z,
+            DataT spacing,
+            std::size_t num_x,
+            std::size_t num_y,
+            std::size_t num_z,
+            DataT offset_scaled,
+            DataT inv_rotation_row0_x,
+            DataT inv_rotation_row0_y,
+            DataT inv_rotation_row0_z,
+            DataT inv_rotation_row1_x,
+            DataT inv_rotation_row1_y,
+            DataT inv_rotation_row1_z,
+            DataT inv_rotation_row2_x,
+            DataT inv_rotation_row2_y,
+            DataT inv_rotation_row2_z,
+            DataT inv_translation_x,
+            DataT inv_translation_y,
+            DataT inv_translation_z,
+            const std::vector<float> &data)
+          : Shape<DataT>()
+          , bounds_lower_x(bounds_lower_x)
+          , bounds_lower_y(bounds_lower_y)
+          , bounds_lower_z(bounds_lower_z)
+          , bounds_upper_x(bounds_upper_x)
+          , bounds_upper_y(bounds_upper_y)
+          , bounds_upper_z(bounds_upper_z)
+          , spacing(spacing)
+          , num_x(num_x)
+          , num_y(num_y)
+          , num_z(num_z)
+          , offset_scaled(offset_scaled)
+          , inv_rotation_row0_x(inv_rotation_row0_x)
+          , inv_rotation_row0_y(inv_rotation_row0_y)
+          , inv_rotation_row0_z(inv_rotation_row0_z)
+          , inv_rotation_row1_x(inv_rotation_row1_x)
+          , inv_rotation_row1_y(inv_rotation_row1_y)
+          , inv_rotation_row1_z(inv_rotation_row1_z)
+          , inv_rotation_row2_x(inv_rotation_row2_x)
+          , inv_rotation_row2_y(inv_rotation_row2_y)
+          , inv_rotation_row2_z(inv_rotation_row2_z)
+          , inv_translation_x(inv_translation_x)
+          , inv_translation_y(inv_translation_y)
+          , inv_translation_z(inv_translation_z)
+          , data(data)
+        {
+            Shape<DataT>::min_distance = 0.0F;
+        }
+
+        template <typename OtherDataT>
+        explicit SDFGrid(const SDFGrid<OtherDataT> &other)
+          : Shape<DataT>(other)
+          , bounds_lower_x(other.bounds_lower_x)
+          , bounds_lower_y(other.bounds_lower_y)
+          , bounds_lower_z(other.bounds_lower_z)
+          , bounds_upper_x(other.bounds_upper_x)
+          , bounds_upper_y(other.bounds_upper_y)
+          , bounds_upper_z(other.bounds_upper_z)
+          , spacing(other.spacing)
+          , num_x(other.num_x)
+          , num_y(other.num_y)
+          , num_z(other.num_z)
+          , offset_scaled(other.offset_scaled)
+          , inv_rotation_row0_x(other.inv_rotation_row0_x)
+          , inv_rotation_row0_y(other.inv_rotation_row0_y)
+          , inv_rotation_row0_z(other.inv_rotation_row0_z)
+          , inv_rotation_row1_x(other.inv_rotation_row1_x)
+          , inv_rotation_row1_y(other.inv_rotation_row1_y)
+          , inv_rotation_row1_z(other.inv_rotation_row1_z)
+          , inv_rotation_row2_x(other.inv_rotation_row2_x)
+          , inv_rotation_row2_y(other.inv_rotation_row2_y)
+          , inv_rotation_row2_z(other.inv_rotation_row2_z)
+          , inv_translation_x(other.inv_translation_x)
+          , inv_translation_y(other.inv_translation_y)
+          , inv_translation_z(other.inv_translation_z)
+          , data(other.data)
+          , masked_link_bitmask(other.masked_link_bitmask)
         {
         }
     };

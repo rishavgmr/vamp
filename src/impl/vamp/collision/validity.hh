@@ -6,6 +6,7 @@
 #include <vamp/collision/sphere_capsule.hh>
 #include <vamp/collision/sphere_cuboid.hh>
 #include <vamp/collision/sphere_heightfield.hh>
+#include <vamp/collision/sphere_sdf.hh>
 #include <vamp/collision/math.hh>
 
 namespace vamp
@@ -40,7 +41,10 @@ namespace vamp
         auto br = static_cast<VectorDataT>(br_);
 
         // TODO: Figure out a way to avoid needing to upcast floats to vectors
-        return not collision::sphere_sphere_sql2(ax, ay, az, ar, bx, by, bz, br).test_zero();
+        // RSW-2740: sql2_self (not plain sql2) adds collision::self_collision_offset_m's runtime
+        // clearance margin - see sphere_sphere.hh's own comment for why this is scoped to arm
+        // self-collision specifically, mirroring pRRTC's own fanucm710_self_collision_offset.
+        return not collision::sphere_sphere_sql2_self(ax, ay, az, ar, bx, by, bz, br).test_zero();
     }
 
     template <typename DataT, typename ArgT1, typename ArgT2, typename ArgT3, typename ArgT4>
@@ -49,7 +53,18 @@ namespace vamp
         ArgT1 sx_,
         ArgT2 sy_,
         ArgT3 sz_,
-        ArgT4 sr_) noexcept -> bool
+        ArgT4 sr_,
+        // RSW-2740: which cricket link_index this query's sphere belongs to, or -1 (default) if
+        // the caller has no link identity to give (e.g. attachment_environment_collision, or any
+        // pre-existing generated robot header from before this parameter existed - both keep
+        // working unmasked, exactly as before). When >= 0, ccfk_template.hh's per-link blocks
+        // pass their own compile-time link_index here, and any SDFGrid whose
+        // masked_link_bitmask has that bit set is skipped entirely for this link - mirrors
+        // pRRTC's own uploadSDFEnvironment(..., link_env_mask, ...) / fanucm710_link_env_mask,
+        // both driven by the same scene_config_m710.json collisionMask entries. Only applies to
+        // sdf_grids (matches pRRTC's own scope - its masking is SDF-grid-specific too); other
+        // shape types have no masking concept.
+        int link_index = -1) noexcept -> bool
     {
         // TODO: Figure out a way to avoid needing to upcast floats to vectors
         auto sx = static_cast<DataT>(sx_);
@@ -132,6 +147,19 @@ namespace vamp
         for (const auto &eh : e.heightfields)
         {
             if (not collision::sphere_heightfield(eh, sx, sy, sz, sr).test_zero())
+            {
+                return true;
+            }
+        }
+
+        for (const auto &eg : e.sdf_grids)
+        {
+            if (link_index >= 0 && (eg.masked_link_bitmask & (1u << static_cast<unsigned>(link_index))))
+            {
+                continue;
+            }
+
+            if (not collision::sphere_sdf(eg, sx, sy, sz, sr).test_zero())
             {
                 return true;
             }
@@ -242,6 +270,14 @@ namespace vamp
             if (not collision::sphere_heightfield(eh, sx, sy, sz, sr).test_zero())
             {
                 objects.emplace_back(eh.name);
+            }
+        }
+
+        for (const auto &eg : e.sdf_grids)
+        {
+            if (not collision::sphere_sdf(eg, sx, sy, sz, sr).test_zero())
+            {
+                objects.emplace_back(eg.name);
             }
         }
 

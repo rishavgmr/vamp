@@ -21,6 +21,7 @@ namespace vamp::collision
         std::vector<Cuboid<DataT>> cuboids;
         std::vector<Cuboid<DataT>> z_aligned_cuboids;
         std::vector<HeightField<DataT>> heightfields;
+        std::vector<SDFGrid<DataT>> sdf_grids;
         std::vector<CAPT> pointclouds;
         std::optional<Attachment<DataT>> attachments;
 
@@ -35,6 +36,7 @@ namespace vamp::collision
           , cuboids(other.cuboids.begin(), other.cuboids.end())
           , z_aligned_cuboids(other.z_aligned_cuboids.begin(), other.z_aligned_cuboids.end())
           , heightfields(other.heightfields.begin(), other.heightfields.end())
+          , sdf_grids(other.sdf_grids.begin(), other.sdf_grids.end())
           , pointclouds(other.pointclouds.begin(), other.pointclouds.end())
           , attachments(other.template clone_attachments<DataT>())
         {
