@@ -337,7 +337,21 @@ namespace vamp::collision
         DataT inv_rotation_row2_x, inv_rotation_row2_y, inv_rotation_row2_z;
         DataT inv_translation_x, inv_translation_y, inv_translation_z;
 
-        std::vector<float> data;  // flattened, X fastest / Z slowest (matches pRRTC's sdf_flat_idx)
+        // RSW-2740: shared_ptr, not an owned vector - flattened, X fastest / Z slowest (matches
+        // pRRTC's sdf_flat_idx). This grid data is by far the largest thing an Environment owns
+        // (100s of MB for a real scene) and is never mutated after construction (sphere_sdf.hh
+        // only ever reads it), so sharing it read-only across copies is both safe and the whole
+        // point: it's what makes an entire Environment cheap to copy. That matters because
+        // RRTC::solve() has no concept of "multiple concurrent problems" and shouldn't gain one -
+        // the intended pattern for running N problems in parallel is N threads, each with its own
+        // *copy* of one canonical Environment (cheap, thanks to this), not N threads sharing one
+        // Environment. Sharing one would race on Attachment::posed_spheres (attachments.hh's own
+        // documented HACK - mutable through a const Environment&) every time fkcc_attach() poses
+        // it, once per candidate configuration checked, not just once per problem. Giving each
+        // thread its own copy sidesteps that entirely without changing Attachment/validity.hh/
+        // any generated code at all - verified with a real concurrent test, not just by
+        // inspection (see test_environment_copy_is_cheap_and_independent).
+        std::shared_ptr<const std::vector<float>> data;
 
         // RSW-2740: bit `i` set means cricket's per-link environment check for link_index `i`
         // (see ccfk_template.hh's per-link block) skips this grid entirely, mirroring pRRTC's
@@ -376,6 +390,9 @@ namespace vamp::collision
             DataT inv_translation_y,
             DataT inv_translation_z,
             const std::vector<float> &data)
+          // Wrapped into the shared_ptr right here so callers (build_grid() in the benchmark)
+          // don't need to change at all - they still just hand in a plain vector once, at load
+          // time, exactly as before.
           : Shape<DataT>()
           , bounds_lower_x(bounds_lower_x)
           , bounds_lower_y(bounds_lower_y)
@@ -400,7 +417,7 @@ namespace vamp::collision
           , inv_translation_x(inv_translation_x)
           , inv_translation_y(inv_translation_y)
           , inv_translation_z(inv_translation_z)
-          , data(data)
+          , data(std::make_shared<const std::vector<float>>(data))
         {
             Shape<DataT>::min_distance = 0.0F;
         }

@@ -166,6 +166,16 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   target_compile_options(benchmark_fanuc_m710_sdf PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
 endif()
 
+find_package(Threads REQUIRED)
+# RSW-2740 Phase 3: batch orchestrator - solves a whole batch of (start, goal) pairs from a
+# case's problems_batch.json concurrently (one thread per pair), verifying VAMP's solve()
+# reentrancy fix (Phase 1) under real concurrent load.
+add_executable(benchmark_fanuc_m710_sdf_batch scripts/cpp/benchmark_fanuc_m710_sdf_batch.cc)
+target_link_libraries(benchmark_fanuc_m710_sdf_batch PRIVATE vamp_cpp nlohmann_json::nlohmann_json Threads::Threads)
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  target_compile_options(benchmark_fanuc_m710_sdf_batch PRIVATE -Wno-c++11-narrowing -Wno-sign-compare)
+endif()
+
 # OMPL integration demo
 if(VAMP_BUILD_OMPL_DEMO)
   find_package(ompl QUIET PATHS ${VAMP_OMPL_PATH})

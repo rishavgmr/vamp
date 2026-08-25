@@ -79,7 +79,7 @@ namespace vamp::collision
         IndexT dim_xy = IndexT::fill(static_cast<int>(grid.num_x * grid.num_y));
         IndexT base = ix_i + iy_i * dim_x + iz_i * dim_xy;
 
-        const float *data = grid.data.data();
+        const float *data = grid.data->data();
         auto s000 = DataT::gather(data, base);
         auto s100 = DataT::gather(data, base + IndexT::fill(1));
         auto s010 = DataT::gather(data, base + dim_x);
